@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Teasers · {{ week_label }}{% endblock %}
+
+{% block content %}
+<section class="flex flex-col gap-6">
+
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="text-3xl font-semibold text-white tracking-tight">Wong-teaser cards</h1>
+      <p class="text-sm text-chrome-400 mt-1 max-w-2xl">
+        A "Wong teaser" is a 6-point teaser leg that crosses BOTH key numbers (3 and 7).
+        Historically these legs hit ~73-75% on the main slate &mdash; the model surfaces
+        the highest-conviction crossings for the current week.
+      </p>
+      <div class="text-xs text-chrome-500 mt-1">{{ week_label }}</div>
+    </div>
+  </div>
+
+  {% if cards|length == 0 %}
+    <div class="rounded-lg border border-dashed border-chrome-700 bg-chrome-800/40 p-10 text-center">
+      <div class="text-chrome-400 text-sm">No qualifying teaser legs in the current slate.</div>
+      <div class="text-xs text-chrome-500 mt-2">
+        Pull lines first: <code class="font-mono">nfl-model data pull-range {{ season }} {{ season }}</code>
+      </div>
+    </div>
+  {% else %}
+    <div class="rounded-xl border border-chrome-700/60 bg-chrome-800/60 overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-[11px] uppercase tracking-wider text-chrome-500 bg-chrome-900/40">
+          <tr>
+            <th class="text-left  font-normal py-2 px-4">Game</th>
+            <th class="text-left  font-normal py-2 px-4">Side</th>
+            <th class="text-right font-normal py-2 px-4">Posted</th>
+            <th class="text-right font-normal py-2 px-4">Teased</th>
+            <th class="text-center font-normal py-2 px-4">Crosses 3</th>
+            <th class="text-center font-normal py-2 px-4">Crosses 7</th>
+            <th class="text-right font-normal py-2 px-4">Calibrated leg %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in cards %}
+            <tr class="border-t border-chrome-800 hover:bg-chrome-700/30 {% if c.is_wong %}bg-brand-700/10{% endif %}">
+              <td class="px-4 py-1.5 font-mono">{{ c.matchup }}</td>
+              <td class="px-4 py-1.5 text-white font-medium capitalize">{{ c.side }}</td>
+              <td class="px-4 py-1.5 text-right font-mono text-chrome-300">{{ "%+.1f" % c.original_spread }}</td>
+              <td class="px-4 py-1.5 text-right font-mono text-white">{{ "%+.1f" % c.teased_spread }}</td>
+              <td class="px-4 py-1.5 text-center text-brand-300">{% if c.crosses_3 %}✓{% endif %}</td>
+              <td class="px-4 py-1.5 text-center text-brand-300">{% if c.crosses_7 %}✓{% endif %}</td>
+              <td class="px-4 py-1.5 text-right font-mono
+                         {{ 'text-brand-300' if c.leg_prob >= 0.74 else 'text-amber-300' if c.leg_prob >= 0.65 else 'text-chrome-300' }}">
+                {{ "%.3f" % c.leg_prob }}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+</section>
+{% endblock %}
