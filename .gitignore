@@ -52,8 +52,14 @@ htmlcov/
 .ruff_cache/
 
 # --- This project: data is NEVER committed ---
-data/
-!data/.gitkeep
+# Anchor to repo root with a leading slash so the rule excludes only
+# the top-level data/ warehouse directory, NOT the `src/nfl_model/data/`
+# Python package (the warehouse + ingestors + pipeline SOURCE CODE).
+# Without the leading slash, .gitignore matches `data/` at any depth
+# and silently drops the entire data layer — which is exactly how the
+# original v1.0.0 release shipped without it.
+/data/
+!/data/.gitkeep
 *.parquet
 *.duckdb
 *.duckdb.wal
@@ -61,19 +67,19 @@ data/
 !data_dictionary*.csv
 
 # --- Models ---
-models/
+/models/
 *.pkl
 *.joblib
 *.lgb
 *.xgb
 
 # --- Logs ---
-logs/
+/logs/
 *.log
 
 # --- End-of-season reports (generated annually) ---
-reports/
-!reports/.gitkeep
+/reports/
+!/reports/.gitkeep
 
 # --- Secrets ---
 secrets.toml

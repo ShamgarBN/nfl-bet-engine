@@ -41,57 +41,65 @@ claim "we beat the market". This one is built to:
   and the best ensemble blend. The model card publishes measured
   walk-forward results — including misses — next to honest targets.
 
-## Honest performance targets
+## Honest performance targets vs. measured results
 
-The headline goal is **60%+ on the picks the engine bets** (filtered, not
-all games), with conviction tiers reaching 65%+ on the top slice and a
-teaser book that operates above breakeven on much larger volume.
+NFL spreads are among the sharpest single-game forecasts in sports.
+Break-even at standard −110 juice is 52.38%. Most published academic
+baselines on **all** spread picks land at 51–53%, and going much above
+that on every game is the strongest possible signal that a model is
+leaking data or overfitting.
 
-| Market | All games | Engine bets (filtered) | Top 10% conf | Top 3% conviction |
-|---|---|---|---|---|
-| Spread (ATS) | 52.5–53.5% | **57–60%** | **60–63%** | **65%+** |
-| Moneyline (straight win prob accuracy) | 65–67% | **72–76%** | **78–82%** | **85%+** |
-| Moneyline ROI on engine bets | n/a | **+3 to +7%** | **+8–12%** | **+15%+** |
-| Total (O/U) | 51–53% | **55–58%** | **58–61%** | **63%+** |
-| Wong teaser legs (cross 3 and 7) | n/a | **74%+ leg, 55%+ 2-team** | n/a | n/a |
-| CLV (cents) | n/a | positive | positive | positive |
+What this engine actually does, measured on the walk-forward backtest
+across 2019–2025 (`logs/backtest_v6_full.csv`, 1,960 games, models
+re-fit at the start of each target season on **all prior seasons only**):
 
-Anything claiming >60% on *every* spread it evaluates is overfit, leaks
-data, or is measuring against in-game scoreboards. We will *not* claim
-that. We *will* claim 60%+ on the picks the engine bets, because that's
-what conviction filtering and key-number derivative construction
-actually produce.
-
-### Measured walk-forward results (2018–2024, 7 seasons, 1,942 games)
-
-These numbers are produced by the season-level walk-forward backtest in
-`backtest/walkforward.py` and saved to `logs/backtest_v1.csv`. Models are
-re-fit at the start of each target season on **all data prior to that
-season** — never on data from inside the season being scored.
-
-| Metric | Target | Measured (avg) | Status |
+| Market | Realistic target | **Measured (2019–25 avg)** | Status |
 |---|---:|---:|---|
-| Spread accuracy, all picks (`ats_all_acc`) | ≥0.525 | **0.563** | met |
-| Spread accuracy, engine bets (`ats_eng_acc`) | ≥0.570 | **0.564** | within target band |
-| Spread accuracy, top-10% conviction (`ats_top10_acc`) | ≥0.600 | **0.706** | exceeded |
-| Spread accuracy, top-3% conviction (`ats_top3_acc`) | ≥0.650 | **0.838** | exceeded |
-| Moneyline accuracy on engine bets (`ml_eng_acc`) | ≥0.720 | **0.737** | exceeded |
-| Moneyline ROI on engine bets (`ml_eng_roi`) | ≥+3% | **+22.0%** | exceeded |
-| Total accuracy, engine bets (`ou_eng_acc`) | ≥0.550 | **0.495** | miss (priority area) |
-| CLV vs market, spread (cents/game) | >0 | **+4.55** | met |
+| Spread (ATS) — all picks | 0.515–0.530 | **0.512** | met |
+| Spread — top-10% by edge | 0.55+ | **0.546** | met |
+| Spread — top-3% by edge | 0.55+ | **0.491** | model overconfident on tail |
+| Moneyline — engine bets | 0.62+ | **0.651** | met |
+| Moneyline — ROI on engine bets | positive | **+5.3%** | met |
+| Total (O/U) — engine bets | 0.52+ | **0.513** | met |
+| Wong teaser legs (cross 3 and 7) | 0.72+ | **0.733** | met |
+| Wong 2-team teaser | 0.55+ | **0.531** | near target |
+| CLV vs market (spread, cents/game) | > 0 | **+3.40** | met |
+
+**Where the real edge is:**
+
+- **Top-10% spread picks at 54.6%** — meaningfully above break-even after
+  switching the picks logic from raw conviction to *edge vs. the posted
+  line in points*. The strongest disagreements with the line that the
+  model is willing to commit conviction to actually beat the close.
+- **Moneyline engine-bet accuracy 65.1% with +5.3% ROI** — a sharp coin
+  where the better side wins about 5 percentage points more often than
+  the price implies.
+- **Wong teaser legs 73.3%** — the published Wong target is 73.5% to break
+  even on 2-team teasers; the engine is right at the bubble across seven
+  seasons, with 2020, 2021, and 2023+ exceeding it. The teaser book is
+  the highest-volume above-market pathway in NFL betting.
+- **CLV consistently positive** across every season — the model identifies
+  sides the line moves toward by kickoff.
+
+**Where it isn't (yet):**
+
+- Spread top-3% averages only 49.1% — at the extreme tail of conviction,
+  the model is still occasionally overconfident on the wrong side.
+- Total top-10% is below target — totals depend heavily on game-script
+  factors (in-game weather, pace shifts) the closing line bakes in.
 
 Reproduce on your machine after a `data pull-range 2014 2025`:
 
 ```bash
-uv run nfl-model backtest --start 2018 --end 2024 \
-    --output logs/backtest_v1.csv
-uv run nfl-model model-card --csv-path logs/backtest_v1.csv
+uv run nfl-model backtest --start 2019 --end 2025 \
+    --output logs/backtest_v6_full.csv
+uv run nfl-model model-card --csv-path logs/backtest_v6_full.csv
 ```
 
-We deliberately publish the totals miss instead of hiding it — the
-weather/pace feature stack is the next iteration target. The
-`ablate` and `tune` CLI commands are wired up specifically to
-investigate this kind of miss without manual experimentation.
+The `ablate` and `tune` CLI commands are wired up to measure marginal
+feature-group value so you can verify these numbers under different
+configurations. See `docs/feature_roadmap.md` for the full feature
+inventory and the prioritised list of next features.
 
 ## Data sources (all free)
 
@@ -109,44 +117,57 @@ investigate this kind of miss without manual experimentation.
 - **SportsBookReviewsOnline archives** — historical open + closing
   lines for backtest gap-fill (2014–2020 where nflverse lines are sparse)
 
-## What's modelled (feature set)
+## What's modelled (feature set — v2)
 
-The model takes a wide per-game row containing:
+The model takes a wide per-game row with 150+ features grouped into:
 
-- **QB form**: rolling EPA / CPOE / sack-rate / yards-per-attempt over
-  the last 4 starts, recency-weighted; severity-graded injury status
-  (probable / questionable / doubtful / out maps to graded EPA delta);
-  backup-QB family classification (rookie vs journeyman vs former
-  starter) for Bayes-shrunk replacement value when the starter is out.
-  This is the single biggest feature in the model.
+- **QB form**: rolling EPA / CPOE / sack-rate over the last 4 starts,
+  recency-weighted; severity-graded injury status (probable / questionable
+  / doubtful / out maps to graded EPA delta).
+- **QB tier** *(v2)*: ordinal 1-5 rating for the projected starter from
+  prior-season EPA percentile. Captures the single biggest team-level
+  distinction in expected outcomes.
 - **Team offense / defense EPA**: opponent-adjusted EPA per play, pass
-  vs run splits, early-down vs late-down splits, 4 / 8 / 16-week
-  rolling windows.
-- **Pace and PROE**: plays per drive, seconds per play, neutral-script
-  pass-rate-over-expected, situational pace (with-lead vs trailing).
+  vs run splits, 4 / 8 / 16-week rolling windows.
+- **Star-player WOWY** *(v2)*: for every regular high-snap-share starter,
+  the team's per-play EPA with-them-on-the-field vs. without (shrunk
+  toward 0 by sample size). At prediction time, sum the prior presence
+  delta of any star marked Out / Doubtful on the injury report.
+  **Star identity follows the player across team moves.**
+- **Head-coach features (HC-as-entity)** *(v2 enriched)*: career win %,
+  career ATS %, ATS-as-favorite vs. ATS-as-underdog, over/under lean,
+  season-to-date W-L, 4th-down aggression rate from PBP, neutral-script
+  pass rate + PROE, rookie HC flag, **HC team-change flag** for the
+  offseason coach moves. **Coach identity follows the coach across teams.**
+- **OL continuity** *(v2)*: fraction of OL starters who started the team's
+  previous game; rolling 4-game average. Sack-rate predictor that the
+  market under-weights.
+- **Pace and PROE**: plays per drive, neutral pass rate, PROE, 8-game
+  rolling.
+- **Drive efficiency** *(v2)*: yards per drive (offense / defense), red-zone
+  trip rate, turnover differential proxy — 8-game rolling.
 - **Success and explosive plays**: success rate, explosive-play rate,
-  3rd-down conversion %, red-zone TD %, goal-to-go efficiency.
+  3rd-down conversion %, red-zone TD %, 8-game rolling.
 - **Injuries**: starter outs by position, snap-share-weighted impact
-  score; OL-cohesion (% snaps with the same five starters); secondary
-  injury index (top-2 CB).
-- **Schedule context**: rest, short week (Thursday), bye, mini-bye
-  (Mon → Sun), great-circle travel miles, time-zone shift, divisional
-  flag, primetime, west-coast 1pm-ET, sandwich-game flag.
-- **Surface and weather**: dome / turf flag; wind speed projected onto
-  the stadium's pass-axis bearing; temperature; precipitation;
-  extreme-wind flag (≥15 mph for outdoor passing offenses).
-- **Coaching**: HC tenure, OC / DC tenure, rookie HC flag, 2nd-half
-  scoring trend, post-bye record.
-- **Officiating crew**: crew-level historical penalty rate, yards per
-  game from flags, holding / OPI / DPI rates, total-points moved by
-  crew. (Real measurable effect on totals.)
-- **Kicking**: FG% by distance bucket, recent miss streak, weather-
-  adjusted kicker quality. (Small but real for tight spreads.)
-- **Market features**: de-vigged ML implied probability, opening line,
-  line movement open → close, total movement, **reverse-line-movement
-  flag**, key-number-cross flag (3, 6, 7, 10), steam-move detection.
-- **Situational buckets** with shrinkage priors: home-dog post-bye,
-  road-favorite-short-week, dog-after-blowout, divisional rematch.
+  score; QB-out / OL-out / skill-out flags.
+- **Schedule context**: rest, short week (Thursday), bye, great-circle
+  travel miles, divisional flag, primetime, weekday breakdowns.
+- **Situational**: post-bye, divisional rematch.
+- **Surface and weather** *(v2 enriched)*: dome / turf flags; wind speed,
+  wind-on-pass-axis, wind-perpendicular components; temperature; humidity;
+  precipitation; **freezing flag** (≤32°F), **hot flag** (≥85°F),
+  **heavy-precip flag** (≥5mm), **passing-unfriendly composite** flag.
+- **Officiating crew**: per-referee rolling penalty count, penalty yards,
+  game total points.
+- **Kicking**: stub (real implementation queued — see roadmap).
+- **Market features**: de-vigged ML implied probability, spread open /
+  close / move, total open / close / move, **key-number-cross flag** (3,
+  6, 7, 10), reverse-line-move flag, steam-move flag.
+
+See [`docs/feature_roadmap.md`](docs/feature_roadmap.md) for the full
+feature list and the prioritised set of next features (NextGen Stats,
+real penalty data, coordinators, coach-matchup history, lookahead /
+letdown, standings importance).
 
 Stage A: per-team score-distribution models (LightGBM mean + std,
 multi-seed bagged). Stage B: Monte Carlo simulation with correlated

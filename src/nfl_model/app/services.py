@@ -553,16 +553,25 @@ def _feature_panel(season: int, week: int, game_id: str) -> list[dict[str, Any]]
 
 
 def load_backtest() -> pd.DataFrame:
-    """Read the latest walk-forward backtest CSV."""
-    candidates = [
-        settings.logs_dir / "backtest_v4.csv",
-        settings.logs_dir / "backtest_v3.csv",
-        settings.logs_dir / "backtest_v2.csv",
-        settings.logs_dir / "backtest_v1.csv",
-    ]
+    """Read the latest walk-forward backtest CSV.
+
+    Auto-detects any file matching ``logs/backtest*.csv`` and returns the
+    most recently modified one. This keeps the /performance page in sync
+    as the model evolves through versions (v1, v2, … v6_full, v7_h2h_tz)
+    without having to maintain a hard-coded fallback list.
+    """
+    if not settings.logs_dir.exists():
+        return pd.DataFrame()
+    candidates = sorted(
+        settings.logs_dir.glob("backtest*.csv"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
     for path in candidates:
-        if path.exists():
+        try:
             return pd.read_csv(path)
+        except Exception:  # noqa: BLE001 -- defensive
+            continue
     return pd.DataFrame()
 
 

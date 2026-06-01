@@ -44,15 +44,21 @@ def build_features_table(start_season: int, end_season: int) -> pd.DataFrame:
     # Lazy import + apply each feature builder. Each returns a DataFrame
     # keyed by game_id that we left-join to the games skeleton.
     from nfl_model.features import (
+        coach_matchup,
         coaching,
+        drive_eff,
         injuries as inj_feat,
         kicking,
+        lookahead,
         market,
         officiating as off_feat,
+        ol_continuity,
         pace_proe,
         qb_form,
+        qb_tier,
         schedule_context,
         situational,
+        star_players,
         success_explosive,
         surface_weather,
         team_epa,
@@ -63,6 +69,13 @@ def build_features_table(start_season: int, end_season: int) -> pd.DataFrame:
         team_epa, qb_form, inj_feat, pace_proe, schedule_context,
         surface_weather, market, coaching, success_explosive,
         off_feat, kicking, situational,
+        # New for v2: HC-as-entity, star-player WOWY, drive efficiency,
+        # OL continuity, QB tier.
+        drive_eff, ol_continuity, qb_tier, star_players,
+        # New for v3: head-to-head coach matchup history.
+        coach_matchup,
+        # New for v4: lookahead / letdown opponent strength.
+        lookahead,
     ):
         try:
             piece = module.build(games)

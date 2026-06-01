@@ -48,6 +48,45 @@ def _great_circle_miles(p1: tuple[float, float], p2: tuple[float, float]) -> flo
     return 3956.0 * c
 
 
+def _tz_offset_hours(lon: float) -> float:
+    """Crude time-zone offset in hours from UTC, derived from longitude.
+
+    Good enough for the only thing we need it for: relative differences
+    between two NFL stadiums. (For DST, we don't care — relative shift
+    is what matters.)
+    """
+    return lon / 15.0
+
+
+def _travel_signature(
+    prev_loc: tuple[float, float] | None,
+    curr_loc: tuple[float, float],
+) -> dict[str, float]:
+    """Return travel direction + time-zone delta features for this leg.
+
+    A *negative* ``tz_delta_hours`` means the team is travelling east
+    (losing hours / earlier body clock) — the harder direction. Positive
+    means travelling west.
+    """
+    if prev_loc is None:
+        return {
+            "ew_lon_delta_deg": 0.0,
+            "tz_delta_hours": 0.0,
+            "east_to_west": False,
+            "west_to_east": False,
+            "tz_shift_3plus": False,
+        }
+    lon_delta = curr_loc[1] - prev_loc[1]
+    tz_delta = _tz_offset_hours(curr_loc[1]) - _tz_offset_hours(prev_loc[1])
+    return {
+        "ew_lon_delta_deg": float(lon_delta),
+        "tz_delta_hours": float(tz_delta),
+        "east_to_west": bool(tz_delta > 0.5),
+        "west_to_east": bool(tz_delta < -0.5),
+        "tz_shift_3plus": bool(abs(tz_delta) >= 3.0),
+    }
+
+
 def build(games: pd.DataFrame) -> pd.DataFrame:
     if games.empty:
         return pd.DataFrame()
@@ -70,6 +109,7 @@ def build(games: pd.DataFrame) -> pd.DataFrame:
                 (curr_date - prev_date).days if (curr_date and prev_date) else None
             )
             travel = _great_circle_miles(prev_loc, curr_loc) if prev_loc else 0.0
+            tsig = _travel_signature(prev_loc, curr_loc)
             rows.append(
                 {
                     "game_id": g["game_id"],
@@ -78,6 +118,7 @@ def build(games: pd.DataFrame) -> pd.DataFrame:
                     "short_week": rest_days is not None and rest_days <= 4,
                     "long_rest": rest_days is not None and rest_days >= 10,
                     "travel_miles": travel,
+                    **tsig,
                 }
             )
             prev_date = curr_date
