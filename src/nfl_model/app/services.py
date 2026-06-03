@@ -553,26 +553,163 @@ def _feature_panel(season: int, week: int, game_id: str) -> list[dict[str, Any]]
 
 
 def load_backtest() -> pd.DataFrame:
-    """Read the latest walk-forward backtest CSV.
+    """Read the most comprehensive walk-forward backtest CSV available.
 
-    Auto-detects any file matching ``logs/backtest*.csv`` and returns the
-    most recently modified one. This keeps the /performance page in sync
-    as the model evolves through versions (v1, v2, … v6_full, v7_h2h_tz)
-    without having to maintain a hard-coded fallback list.
+    Auto-detects any file matching ``logs/backtest*.csv``. Selection rule:
+
+    1. **Prefer the CSV with the most rows** (most seasons covered). A
+       7-season backtest is a better readout than a 2-season smoke even
+       if the smoke is newer.
+    2. **Break ties by modification time** (most recent wins) so when the
+       model evolves, the freshest full-history run is shown.
+
+    This keeps the /performance page useful as the model iterates without
+    requiring a hard-coded version fallback list.
     """
     if not settings.logs_dir.exists():
         return pd.DataFrame()
-    candidates = sorted(
-        settings.logs_dir.glob("backtest*.csv"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    for path in candidates:
+    paths = list(settings.logs_dir.glob("backtest*.csv"))
+    if not paths:
+        return pd.DataFrame()
+
+    scored: list[tuple[int, float, Path, pd.DataFrame]] = []
+    for path in paths:
         try:
-            return pd.read_csv(path)
+            df = pd.read_csv(path)
         except Exception:  # noqa: BLE001 -- defensive
             continue
-    return pd.DataFrame()
+        if df.empty:
+            continue
+        scored.append((len(df), path.stat().st_mtime, path, df))
+
+    if not scored:
+        return pd.DataFrame()
+    scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
+    return scored[0][3]
+
+
+# --------------------------------------------------------------------------- #
+# Confidence-tier summary (powers the /performance "tier breakdown" cards)     #
+# --------------------------------------------------------------------------- #
+
+# Per-market tier definitions: ordered from broadest (all picks) to narrowest
+# (top-3% by edge). Each entry maps a display label + tooltip to the column
+# name in the backtest CSV, plus an optional ROI column for ML / teasers.
+# Tooltips explain "what does this tier actually mean" so the page is
+# self-documenting for someone who didn't write the model.
+_TIER_DEFS: list[dict[str, Any]] = [
+    {
+        "market": "spread",
+        "title": "Spread (ATS)",
+        "subtitle": "Pick side the model's expected margin beats the line on",
+        "tiers": [
+            {"label": "All picks", "key": "ats_all_acc",
+             "tooltip": "Every game in the slate."},
+            {"label": "Engine bets", "key": "ats_eng_acc",
+             "tooltip": "Picks where the expected cover margin clears the engine threshold."},
+            {"label": "Top-10% by edge", "key": "ats_top10_acc",
+             "tooltip": "The 10% of picks with the largest disagreement vs the closing line."},
+            {"label": "Top-3% by edge", "key": "ats_top3_acc",
+             "tooltip": "The 3% of picks with the largest disagreement vs the closing line."},
+        ],
+    },
+    {
+        "market": "ml",
+        "title": "Moneyline",
+        "subtitle": "Model edge vs de-vigged closing price",
+        "tiers": [
+            {"label": "Engine bets — accuracy", "key": "ml_eng_acc",
+             "tooltip": "Picks where the model's win probability beats the de-vigged market price by the Kelly cushion."},
+            {"label": "Engine bets — ROI", "key": "ml_eng_roi", "is_roi": True,
+             "tooltip": "Profit per 1-unit stake, averaged across engine bets, at the listed American price."},
+        ],
+    },
+    {
+        "market": "total",
+        "title": "Over / Under",
+        "subtitle": "Pick side the model's expected total beats the line on",
+        "tiers": [
+            {"label": "All picks", "key": "ou_all_acc",
+             "tooltip": "Every game in the slate."},
+            {"label": "Engine bets", "key": "ou_eng_acc",
+             "tooltip": "Picks where the expected total clears the engine threshold from the posted O/U."},
+            {"label": "Top-10% by edge", "key": "ou_top10_acc",
+             "tooltip": "The 10% of picks with the largest disagreement vs the posted total."},
+        ],
+    },
+    {
+        "market": "teaser",
+        "title": "Wong teasers",
+        "subtitle": "6-pt legs that cross BOTH key numbers (3 and 7)",
+        "tiers": [
+            {"label": "Leg hit rate", "key": "teaser_leg_pct",
+             "tooltip": "Per-leg cover rate at the teased line. Wong-target: 72.4% to break even on standard -110 2-team teasers."},
+            {"label": "2-team hit rate", "key": "teaser_2team_pct",
+             "tooltip": "Joint hit rate when pairing adjacent eligible legs into 2-team teasers."},
+        ],
+    },
+    {
+        "market": "clv",
+        "title": "Closing-line value",
+        "subtitle": "Sanity check that the score model has real edge",
+        "tiers": [
+            {"label": "CLV (cents/game)", "key": "clv_spread", "is_clv": True,
+             "tooltip": "Mean gap (in points) between the model's expected margin and the market spread. Positive across every season means the line consistently moves toward our side by kickoff."},
+        ],
+    },
+]
+
+
+def tier_summary() -> list[dict[str, Any]]:
+    """Per-market confidence-tier breakdown from the latest backtest CSV.
+
+    Returns a list of market-grouped dicts ready for direct template render.
+    Each tier carries its 7-season average plus best/worst single-season
+    values (with season labels) so the page can highlight which years drove
+    the average up or down.
+    """
+    df = load_backtest()
+    if df.empty:
+        return []
+
+    def _stats(col: str) -> dict[str, Any] | None:
+        if col not in df.columns:
+            return None
+        vals = pd.to_numeric(df[col], errors="coerce")
+        seasons = pd.to_numeric(df.get("season"), errors="coerce")
+        mask = vals.notna() & seasons.notna()
+        if not mask.any():
+            return None
+        v = vals[mask]
+        s = seasons[mask].astype(int)
+        best_idx = v.idxmax()
+        worst_idx = v.idxmin()
+        return {
+            "avg": float(v.mean()),
+            "best_value": float(v.loc[best_idx]),
+            "best_season": int(s.loc[best_idx]),
+            "worst_value": float(v.loc[worst_idx]),
+            "worst_season": int(s.loc[worst_idx]),
+            "n_seasons": int(mask.sum()),
+        }
+
+    out: list[dict[str, Any]] = []
+    for market in _TIER_DEFS:
+        rows: list[dict[str, Any]] = []
+        for tier in market["tiers"]:
+            stats = _stats(tier["key"])
+            if stats is None:
+                continue
+            rows.append({**tier, **stats})
+        if not rows:
+            continue
+        out.append({
+            "market": market["market"],
+            "title": market["title"],
+            "subtitle": market["subtitle"],
+            "tiers": rows,
+        })
+    return out
 
 
 # --------------------------------------------------------------------------- #

@@ -40,6 +40,83 @@
   </div>
   {% endif %}
 
+  {# ------- Confidence-tier breakdown ------- #}
+  {% if tier_summary %}
+  <div class="rounded-xl border border-chrome-700/60 bg-chrome-800/60">
+    <div class="flex items-center justify-between p-5 border-b border-chrome-700/60 flex-wrap gap-2">
+      <div>
+        <h2 class="text-sm font-semibold text-white">Confidence-tier breakdown</h2>
+        <p class="text-xs text-chrome-500 mt-0.5">
+          Per-market hit rate at each conviction tier, averaged across every backtested season,
+          with the best and worst single seasons called out so the spread is visible.
+        </p>
+      </div>
+      <div class="text-[11px] uppercase tracking-widest text-chrome-500">
+        Walk-forward · {{ tier_summary[0].tiers[0].n_seasons }} seasons
+      </div>
+    </div>
+
+    <div class="divide-y divide-chrome-700/60">
+      {% for market in tier_summary %}
+        <div class="p-5">
+          <div class="flex items-baseline justify-between flex-wrap gap-2 mb-3">
+            <div>
+              <h3 class="text-sm font-semibold text-white">{{ market.title }}</h3>
+              <p class="text-xs text-chrome-500">{{ market.subtitle }}</p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {% for tier in market.tiers %}
+              {% set is_roi = tier.get('is_roi', False) %}
+              {% set is_clv = tier.get('is_clv', False) %}
+              {% set good_thresh = (0.5 if not is_roi and not is_clv else (0.0 if is_roi else 0.0)) %}
+              {% set avg_is_good = tier.avg > good_thresh %}
+              <div class="rounded-lg border border-chrome-700/60 bg-chrome-900/40 p-4"
+                   title="{{ tier.tooltip }}">
+                <div class="text-[11px] uppercase tracking-wider text-chrome-500">{{ tier.label }}</div>
+                <div class="mt-1 text-2xl font-semibold font-mono
+                            {{ 'text-emerald-300' if avg_is_good else 'text-rose-300' }}">
+                  {% if is_roi %}
+                    {{ '%+.1f%%' | format(tier.avg * 100) }}
+                  {% elif is_clv %}
+                    {{ '%+.2f' | format(tier.avg) }}
+                  {% else %}
+                    {{ tier.avg | pct }}
+                  {% endif %}
+                </div>
+                <div class="mt-2 text-[11px] text-chrome-400 space-y-0.5">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-chrome-500">Best</span>
+                    <span class="font-mono text-emerald-400">
+                      {% if is_roi %}{{ '%+.1f%%' | format(tier.best_value * 100) }}
+                      {% elif is_clv %}{{ '%+.2f' | format(tier.best_value) }}
+                      {% else %}{{ tier.best_value | pct }}{% endif %}
+                    </span>
+                    <span class="text-chrome-500">'{{ tier.best_season % 100 }}</span>
+                  </div>
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-chrome-500">Worst</span>
+                    <span class="font-mono text-rose-400">
+                      {% if is_roi %}{{ '%+.1f%%' | format(tier.worst_value * 100) }}
+                      {% elif is_clv %}{{ '%+.2f' | format(tier.worst_value) }}
+                      {% else %}{{ tier.worst_value | pct }}{% endif %}
+                    </span>
+                    <span class="text-chrome-500">'{{ tier.worst_season % 100 }}</span>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    <div class="px-5 py-3 border-t border-chrome-700/60 text-[11px] text-chrome-500">
+      Hover any tier card for a one-line definition. Green = above break-even on the relevant
+      metric (50% for hit rates, 0 for ROI / CLV).
+    </div>
+  </div>
+  {% endif %}
+
   <div class="rounded-xl border border-chrome-700/60 bg-chrome-800/60">
     <div class="flex items-center justify-between p-5 border-b border-chrome-700/60">
       <h2 class="text-sm font-semibold text-white">Backtest by season &amp; tier</h2>

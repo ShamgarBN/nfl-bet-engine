@@ -262,10 +262,12 @@ def performance(request: Request) -> HTMLResponse:
             acc = float((vals[mask] * wt).sum() / total_w)
             headline[key] = {"accuracy": acc, "sample_size": int(total_w)}
 
+    tier_summary = services.tier_summary()
+
     return _render(
         request,
         "performance.html",
-        {"rows": rows, "headline": headline},
+        {"rows": rows, "headline": headline, "tier_summary": tier_summary},
     )
 
 
